@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using VoiceTypePL.App.Editing;
 using VoiceTypePL.App.Overlay;
 using VoiceTypePL.App.Tray;
 using VoiceTypePL.Audio;
@@ -14,6 +15,7 @@ using VoiceTypePL.Core.Configuration;
 using VoiceTypePL.Core.History;
 using VoiceTypePL.Core.Injection;
 using VoiceTypePL.Core.Speech;
+using VoiceTypePL.EditEngine;
 using VoiceTypePL.Injection;
 using VoiceTypePL.Stt;
 using VoiceTypePL.Vad;
@@ -33,6 +35,7 @@ public partial class App : Application
     private IHost? _host;
     private TrayIconService? _tray;
     private OverlayService? _overlay;
+    private EditModeService? _editMode;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -93,6 +96,11 @@ public partial class App : Application
         });
         builder.Services.AddSingleton<OverlayService>();
 
+        // Edycja zdania — UIA Poziom 1 (Etap 5).
+        builder.Services.AddSingleton(sp =>
+            new UiaSentenceLocator(sp.GetRequiredService<ILogger<UiaSentenceLocator>>()));
+        builder.Services.AddSingleton<EditModeService>();
+
         builder.Services.AddHostedService<AudioPipelineHostedService>();
 
         _host = builder.Build();
@@ -123,6 +131,10 @@ public partial class App : Application
         // Dymek: tworzenie okna + globalny hook Enter/Esc na wątku UI (jak zasobnik).
         _overlay = _host.Services.GetRequiredService<OverlayService>();
         _overlay.Initialize();
+
+        // Tryb edycji: skrót Ctrl+Alt+E + okno podświetlenia (wątek UI).
+        _editMode = _host.Services.GetRequiredService<EditModeService>();
+        _editMode.Initialize();
     }
 
     /// <summary>
@@ -197,6 +209,7 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        _editMode?.Dispose();
         _overlay?.Dispose();
         _tray?.Dispose();
 

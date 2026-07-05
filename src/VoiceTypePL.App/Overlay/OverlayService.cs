@@ -43,8 +43,17 @@ public sealed class OverlayService : IDisposable
         _logger = logger;
     }
 
-    /// <summary>Zgłaszane po zatwierdzeniu zdania (Etap 4 podłączy tu wstrzykiwanie tekstu).</summary>
+    /// <summary>Zgłaszane po zatwierdzeniu zdania (i wpisaniu go).</summary>
     public event EventHandler<string>? SentenceConfirmed;
+
+    /// <summary>Zgłaszane, gdy zdanie zniknęło bez wpisania (odrzucone/auto-ukryte) — dla trybu edycji.</summary>
+    public event EventHandler? SentenceDismissed;
+
+    /// <summary>
+    /// Tryb edycji (§5.6): gdy true, zatwierdzenie nadpisuje zaznaczone zdanie (bez dopinania spacji).
+    /// Ustawiany przez EditModeService po zaznaczeniu zdania do podmiany.
+    /// </summary>
+    public bool ReplaceMode { get; set; }
 
     /// <summary>Tworzy okno i hooki. Musi być wołane z wątku UI (jak inicjalizacja zasobnika).</summary>
     public void Initialize()
@@ -117,7 +126,10 @@ public sealed class OverlayService : IDisposable
 
         try
         {
-            var result = await _injector.InjectAsync(value);
+            var result = await _injector.InjectAsync(
+                value,
+                appendSpace: ReplaceMode ? false : null,
+                clickToFocus: ReplaceMode ? false : null);
             if (result.Success)
             {
                 _registry.Record(new RegisteredSentence(
@@ -145,6 +157,7 @@ public sealed class OverlayService : IDisposable
     private void OnRejectRequested(object? sender, EventArgs e)
     {
         _logger.LogInformation("Odrzucono zdanie.");
+        SentenceDismissed?.Invoke(this, EventArgs.Empty);
         AdvanceOrHide();
     }
 
@@ -152,12 +165,14 @@ public sealed class OverlayService : IDisposable
     {
         // Pełne ponowne dyktowanie „w miejscu" dopracujemy w Etapie 7; na razie zwolnij slot.
         _logger.LogInformation("Nagraj ponownie — zwalniam bieżące zdanie.");
+        SentenceDismissed?.Invoke(this, EventArgs.Empty);
         AdvanceOrHide();
     }
 
     private void OnAutoHideTick(object? sender, EventArgs e)
     {
         _logger.LogInformation("Auto-ukrycie dymka po bezczynności.");
+        SentenceDismissed?.Invoke(this, EventArgs.Empty);
         AdvanceOrHide();
     }
 

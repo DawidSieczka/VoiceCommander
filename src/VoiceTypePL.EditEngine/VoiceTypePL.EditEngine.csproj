@@ -6,10 +6,12 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <!-- Windows-only: Etap 5 opiera się na UI Automation (UIA3). -->
+    <!-- Windows-only: Etap 5 opiera się na UI Automation. UseWPF daje System.Windows.Automation
+         (TextPattern) oraz System.Windows.Rect do zwracania prostokątów podświetlenia. -->
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
 </Project>

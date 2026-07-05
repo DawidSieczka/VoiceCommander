@@ -33,5 +33,17 @@ public interface ITextInjector
     /// Wstrzykuje <paramref name="text"/> do kontrolki pod kursorem. Zwraca wynik (sukces + dane okna
     /// docelowego, albo powód pominięcia — np. pole hasła). Wołane z wątku UI (STA — wymóg schowka).
     /// </summary>
-    Task<InjectionResult> InjectAsync(string text, CancellationToken cancellationToken = default);
+    /// <param name="appendSpace">
+    /// Nadpisuje ustawienie dopinania spacji: <c>null</c> = użyj domyślnego z opcji; <c>false</c> np.
+    /// przy edycji (nadpisujemy zaznaczenie, bez spacji na końcu).
+    /// </param>
+    /// <param name="clickToFocus">
+    /// Nadpisuje klik ustawiający fokus: <c>null</c> = domyślne z opcji; <c>false</c> przy edycji —
+    /// mamy już zaznaczenie do nadpisania, a klik zwinąłby je i wstawił tekst w pozycji myszy.
+    /// </param>
+    Task<InjectionResult> InjectAsync(
+        string text,
+        bool? appendSpace = null,
+        bool? clickToFocus = null,
+        CancellationToken cancellationToken = default);
 }

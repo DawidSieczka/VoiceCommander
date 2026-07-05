@@ -49,6 +49,7 @@ internal static class NativeMethods
     public const int WS_EX_NOACTIVATE = 0x08000000;   // okno nie przejmuje aktywacji/fokusa
     public const int WS_EX_TOOLWINDOW = 0x00000080;   // brak wpisu na pasku zadań / Alt+Tab
     public const int WS_EX_TOPMOST = 0x00000008;
+    public const int WS_EX_TRANSPARENT = 0x00000020;  // klik przechodzi „na wylot" (ramka podświetlenia)
 
     // --- SetWindowPos ---
     public static readonly IntPtr HWND_TOPMOST = new(-1);

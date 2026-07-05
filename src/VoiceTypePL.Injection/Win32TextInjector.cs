@@ -26,7 +26,11 @@ public sealed class Win32TextInjector : ITextInjector
         _logger = logger;
     }
 
-    public async Task<InjectionResult> InjectAsync(string text, CancellationToken cancellationToken = default)
+    public async Task<InjectionResult> InjectAsync(
+        string text,
+        bool? appendSpace = null,
+        bool? clickToFocus = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -44,15 +48,17 @@ public sealed class Win32TextInjector : ITextInjector
             return InjectionResult.Skipped("pole hasła", _options.Strategy);
         }
 
-        // Klik ustawia fokus/karetkę tylko gdy nie ma już aktywnej karetki (§5.5 krok 2).
-        if (_options.ClickToFocus && !HasActiveCaret())
+        // Klik ustawia fokus/karetkę tylko gdy nie ma już aktywnej karetki (§5.5 krok 2). W trybie
+        // edycji klik jest wyłączony (clickToFocus=false) — inaczej zwinąłby zaznaczenie do nadpisania
+        // i wstawił tekst w pozycji myszy zamiast podmienić zdanie.
+        if ((clickToFocus ?? _options.ClickToFocus) && !HasActiveCaret())
         {
             ClickAtCursor();
             await Task.Delay(40, cancellationToken).ConfigureAwait(true);   // pozwól fokusowi się ustabilizować
         }
 
         var (title, processName, processId) = DescribeForeground();
-        var payload = _options.AppendSpace ? text + " " : text;
+        var payload = (appendSpace ?? _options.AppendSpace) ? text + " " : text;
 
         bool ok;
         try

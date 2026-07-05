@@ -38,8 +38,11 @@ public sealed class AppSettings
     /// <summary>Strategia wstrzykiwania: <c>Clipboard</c> (domyślnie) lub <c>UnicodeSendInput</c> (§5.5).</summary>
     public string InjectionStrategy { get; set; } = "Clipboard";
 
-    /// <summary>Czy klikać w pozycji kursora dla ustawienia fokusu, gdy brak karetki (§5.5).</summary>
-    public bool InjectionClickToFocus { get; set; } = true;
+    /// <summary>
+    /// Czy klikać w pozycji kursora dla ustawienia fokusu (§5.5). Domyślnie WYŁĄCZONE — tekst trafia
+    /// w miejsce bieżącej karetki w oknie z fokusem (kolejne zdania po sobie), a nie w pozycję myszy.
+    /// </summary>
+    public bool InjectionClickToFocus { get; set; }
 
     /// <summary>Opóźnienie [ms] przywrócenia schowka po wklejeniu.</summary>
     public int InjectionClipboardRestoreDelayMs { get; set; } = 150;

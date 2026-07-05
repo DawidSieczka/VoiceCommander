@@ -9,10 +9,13 @@ public sealed class InjectionOptions
     public InjectionStrategy Strategy { get; set; } = InjectionStrategy.Clipboard;
 
     /// <summary>
-    /// Czy kliknąć w pozycji kursora, by ustawić fokus/karetkę, gdy brak aktywnej karetki
-    /// (heurystyka <c>GUITHREADINFO.hwndCaret</c>). Gdy karetka jest — klik jest pomijany.
+    /// Czy kliknąć w pozycji kursora, by ustawić fokus/karetkę. Domyślnie WYŁĄCZONE: tekst trafia do
+    /// okna, które ma fokus, w miejscu bieżącej karetki — kolejne dyktowane zdania dopisują się po
+    /// sobie. Włączony klik przenosiłby karetkę do pozycji myszy przy każdym zdaniu (gdy kontrolka nie
+    /// pokazuje migającej karetki podczas pisania), przez co nowe zdanie wpadałoby tam, gdzie jest mysz,
+    /// zamiast na koniec. Miejsce wstawienia wybiera użytkownik, ustawiając karetkę (klik/zaznaczenie).
     /// </summary>
-    public bool ClickToFocus { get; set; } = true;
+    public bool ClickToFocus { get; set; }
 
     /// <summary>Po ilu ms przywrócić poprzednią zawartość schowka (czas na odczyt Ctrl+V przez cel).</summary>
     public int ClipboardRestoreDelayMs { get; set; } = 150;
