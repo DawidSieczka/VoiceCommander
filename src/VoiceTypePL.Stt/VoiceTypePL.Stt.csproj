@@ -1,7 +1,13 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\VoiceTypePL.Core\VoiceTypePL.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Warstwa zarządzana Whispera + downloader modeli ggml. Natywny runtime (CPU/CUDA/Vulkan)
+         dokłada projekt wykonywalny (App/testy), żeby biblioteka pozostała przenośna. -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
   </ItemGroup>
 
   <PropertyGroup>

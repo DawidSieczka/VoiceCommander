@@ -14,6 +14,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <!-- Natywka CPU do testu integracyjnego (szybko, deterministycznie, bez GPU w CI). -->
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +24,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\VoiceTypePL.Stt\VoiceTypePL.Stt.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Nagranie mowy (public domain, 16 kHz mono) do testu integracyjnego z realnym modelem Whisper. -->
+    <EmbeddedResource Include="Assets\jfk.wav" />
   </ItemGroup>
 
 </Project>

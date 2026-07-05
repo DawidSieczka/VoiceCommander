@@ -10,7 +10,10 @@ using VoiceTypePL.App.Tray;
 using VoiceTypePL.Audio;
 using VoiceTypePL.Core.Audio;
 using VoiceTypePL.Core.Configuration;
+using VoiceTypePL.Core.Speech;
+using VoiceTypePL.Stt;
 using VoiceTypePL.Vad;
+using Whisper.net.Ggml;
 
 namespace VoiceTypePL.App;
 
@@ -57,6 +60,19 @@ public partial class App : Application
             new SileroVadModel(sp.GetRequiredService<ILogger<SileroVadModel>>()));
         builder.Services.AddSingleton<VadSegmenter>();
         builder.Services.AddSingleton<IAudioCaptureSource>(CreateAudioSource);
+
+        // STT — Whisper.net (Etap 2).
+        builder.Services.AddSingleton(CreateWhisperOptions);
+        builder.Services.AddSingleton<IWhisperModelProvider>(sp =>
+            new WhisperModelProvider(
+                sp.GetRequiredService<WhisperOptions>(),
+                sp.GetRequiredService<ILogger<WhisperModelProvider>>()));
+        builder.Services.AddSingleton<ITranscriber>(sp =>
+            new WhisperTranscriber(
+                sp.GetRequiredService<WhisperOptions>(),
+                sp.GetRequiredService<IWhisperModelProvider>(),
+                sp.GetRequiredService<ILogger<WhisperTranscriber>>()));
+
         builder.Services.AddHostedService<AudioPipelineHostedService>();
 
         _host = builder.Build();
@@ -102,6 +118,41 @@ public partial class App : Application
 
         logger.LogInformation("Źródło audio: mikrofon (WASAPI)");
         return new WasapiAudioCaptureSource(services.GetRequiredService<ILogger<WasapiAudioCaptureSource>>());
+    }
+
+    /// <summary>
+    /// Buduje <see cref="WhisperOptions"/> z konfiguracji aplikacji (§4/§5.3). Nazwy modeli i kwantyzacji
+    /// są w configu tekstem (Core nie zależy od Whispera) — tu mapujemy je na enumy, z fallbackiem do
+    /// wartości domyślnych, gdyby config zawierał nieznaną nazwę.
+    /// </summary>
+    private static WhisperOptions CreateWhisperOptions(IServiceProvider services)
+    {
+        var settings = services.GetRequiredService<ISettingsService>().Current;
+        var logger = services.GetRequiredService<ILogger<App>>();
+
+        var options = new WhisperOptions
+        {
+            Language = settings.Language,
+            PreferGpu = settings.WhisperPreferGpu,
+            GpuModel = ParseEnum(settings.WhisperGpuModel, GgmlType.LargeV3Turbo, logger),
+            CpuModel = ParseEnum(settings.WhisperCpuModel, GgmlType.Medium, logger),
+            Quantization = ParseEnum(settings.WhisperQuantization, QuantizationType.Q5_0, logger),
+        };
+        return options;
+    }
+
+    private static TEnum ParseEnum<TEnum>(string value, TEnum fallback, Microsoft.Extensions.Logging.ILogger logger)
+        where TEnum : struct, Enum
+    {
+        if (Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed))
+        {
+            return parsed;
+        }
+
+        logger.LogWarning(
+            "Nieznana wartość '{Value}' dla {Enum} w konfiguracji — używam domyślnej {Fallback}.",
+            value, typeof(TEnum).Name, fallback);
+        return fallback;
     }
 
     protected override async void OnExit(ExitEventArgs e)

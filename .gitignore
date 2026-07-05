@@ -8,8 +8,10 @@ obj/
 .idea/
 *.suo
 
-## Models (downloaded at first run, not versioned)
-**/models/
+## Modele Whispera — pobierane przy pierwszym starcie do %LocalAppData%, nigdy w repo.
+## (Wzorzec po rozszerzeniu, nie po nazwie katalogu: git na Windows ignoruje wielkość liter,
+##  więc `**/models/` błędnie łapał źródłowy folder `Core/Models/`.)
+*.bin
 
 ## Claude Code — lokalne ustawienia/uprawnienia (per-maszyna)
 .claude/settings.local.json
