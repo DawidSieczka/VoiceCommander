@@ -1,7 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\VoiceTypePL.Core\VoiceTypePL.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Model Silero VAD v5 zaszyty w bibliotece (MIT), ~2 MB — bez pobierania z sieci. -->
+    <EmbeddedResource Include="Assets\silero_vad.onnx" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -7,7 +7,10 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using VoiceTypePL.App.Tray;
+using VoiceTypePL.Audio;
+using VoiceTypePL.Core.Audio;
 using VoiceTypePL.Core.Configuration;
+using VoiceTypePL.Vad;
 
 namespace VoiceTypePL.App;
 
@@ -48,6 +51,14 @@ public partial class App : Application
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddSingleton<TrayIconService>();
 
+        // Pipeline audio + VAD (Etap 1).
+        builder.Services.AddSingleton<VadOptions>();
+        builder.Services.AddSingleton<IVadModel>(sp =>
+            new SileroVadModel(sp.GetRequiredService<ILogger<SileroVadModel>>()));
+        builder.Services.AddSingleton<VadSegmenter>();
+        builder.Services.AddSingleton<IAudioCaptureSource>(CreateAudioSource);
+        builder.Services.AddHostedService<AudioPipelineHostedService>();
+
         _host = builder.Build();
         await _host.StartAsync();
 
@@ -72,6 +83,25 @@ public partial class App : Application
 
         _tray = _host.Services.GetRequiredService<TrayIconService>();
         _tray.Initialize();
+    }
+
+    /// <summary>
+    /// Wybiera źródło audio: domyślnie mikrofon (WASAPI). Jeśli zmienna środowiskowa
+    /// <c>VOICETYPEPL_AUDIO_FILE</c> wskazuje istniejący plik WAV (16 kHz mono) — używa go
+    /// zamiast mikrofonu (weryfikacja headless / demo bez sprzętu).
+    /// </summary>
+    private static IAudioCaptureSource CreateAudioSource(IServiceProvider services)
+    {
+        var logger = services.GetRequiredService<ILogger<App>>();
+        var file = Environment.GetEnvironmentVariable("VOICETYPEPL_AUDIO_FILE");
+        if (!string.IsNullOrWhiteSpace(file) && File.Exists(file))
+        {
+            logger.LogInformation("Źródło audio: plik {File}", file);
+            return new WavFileAudioCaptureSource(file);
+        }
+
+        logger.LogInformation("Źródło audio: mikrofon (WASAPI)");
+        return new WasapiAudioCaptureSource(services.GetRequiredService<ILogger<WasapiAudioCaptureSource>>());
     }
 
     protected override async void OnExit(ExitEventArgs e)
