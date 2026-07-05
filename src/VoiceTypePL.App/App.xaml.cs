@@ -6,11 +6,15 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using VoiceTypePL.App.Overlay;
 using VoiceTypePL.App.Tray;
 using VoiceTypePL.Audio;
 using VoiceTypePL.Core.Audio;
 using VoiceTypePL.Core.Configuration;
+using VoiceTypePL.Core.History;
+using VoiceTypePL.Core.Injection;
 using VoiceTypePL.Core.Speech;
+using VoiceTypePL.Injection;
 using VoiceTypePL.Stt;
 using VoiceTypePL.Vad;
 using Whisper.net.Ggml;
@@ -28,6 +32,7 @@ public partial class App : Application
 
     private IHost? _host;
     private TrayIconService? _tray;
+    private OverlayService? _overlay;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -73,6 +78,21 @@ public partial class App : Application
                 sp.GetRequiredService<IWhisperModelProvider>(),
                 sp.GetRequiredService<ILogger<WhisperTranscriber>>()));
 
+        // Wstrzykiwanie tekstu (Etap 4).
+        builder.Services.AddSingleton(CreateInjectionOptions);
+        builder.Services.AddSingleton<ITextInjector>(sp =>
+            new Win32TextInjector(
+                sp.GetRequiredService<InjectionOptions>(),
+                sp.GetRequiredService<ILogger<Win32TextInjector>>()));
+        builder.Services.AddSingleton<SentenceRegistry>();
+
+        // Dymek potwierdzenia (Etap 3).
+        builder.Services.AddSingleton(sp => new OverlayOptions
+        {
+            AutoHideSeconds = sp.GetRequiredService<ISettingsService>().Current.OverlayAutoHideSeconds,
+        });
+        builder.Services.AddSingleton<OverlayService>();
+
         builder.Services.AddHostedService<AudioPipelineHostedService>();
 
         _host = builder.Build();
@@ -99,6 +119,10 @@ public partial class App : Application
 
         _tray = _host.Services.GetRequiredService<TrayIconService>();
         _tray.Initialize();
+
+        // Dymek: tworzenie okna + globalny hook Enter/Esc na wątku UI (jak zasobnik).
+        _overlay = _host.Services.GetRequiredService<OverlayService>();
+        _overlay.Initialize();
     }
 
     /// <summary>
@@ -141,6 +165,22 @@ public partial class App : Application
         return options;
     }
 
+    /// <summary>Buduje <see cref="InjectionOptions"/> z konfiguracji aplikacji (§5.5).</summary>
+    private static InjectionOptions CreateInjectionOptions(IServiceProvider services)
+    {
+        var settings = services.GetRequiredService<ISettingsService>().Current;
+        var logger = services.GetRequiredService<ILogger<App>>();
+
+        return new InjectionOptions
+        {
+            Strategy = ParseEnum(settings.InjectionStrategy, InjectionStrategy.Clipboard, logger),
+            ClickToFocus = settings.InjectionClickToFocus,
+            ClipboardRestoreDelayMs = settings.InjectionClipboardRestoreDelayMs,
+            AppendSpace = settings.InjectionAppendSpace,
+            SkipPasswordFields = settings.InjectionSkipPasswordFields,
+        };
+    }
+
     private static TEnum ParseEnum<TEnum>(string value, TEnum fallback, Microsoft.Extensions.Logging.ILogger logger)
         where TEnum : struct, Enum
     {
@@ -157,6 +197,7 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        _overlay?.Dispose();
         _tray?.Dispose();
 
         if (_host is not null)

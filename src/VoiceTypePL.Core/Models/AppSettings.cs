@@ -31,4 +31,22 @@ public sealed class AppSettings
 
     /// <summary>Kwantyzacja pobieranego modelu (nazwa <c>QuantizationType</c>, np. <c>Q5_0</c>).</summary>
     public string WhisperQuantization { get; set; } = "Q5_0";
+
+    /// <summary>Po ilu sekundach dymek sam znika (0 = nigdy). §5.4.</summary>
+    public double OverlayAutoHideSeconds { get; set; } = 12;
+
+    /// <summary>Strategia wstrzykiwania: <c>Clipboard</c> (domyślnie) lub <c>UnicodeSendInput</c> (§5.5).</summary>
+    public string InjectionStrategy { get; set; } = "Clipboard";
+
+    /// <summary>Czy klikać w pozycji kursora dla ustawienia fokusu, gdy brak karetki (§5.5).</summary>
+    public bool InjectionClickToFocus { get; set; } = true;
+
+    /// <summary>Opóźnienie [ms] przywrócenia schowka po wklejeniu.</summary>
+    public int InjectionClipboardRestoreDelayMs { get; set; } = 150;
+
+    /// <summary>Czy dopiąć spację separującą po wpisanym zdaniu (§5.5.4).</summary>
+    public bool InjectionAppendSpace { get; set; } = true;
+
+    /// <summary>Czy pomijać pola hasła przy wstrzykiwaniu (§5.5).</summary>
+    public bool InjectionSkipPasswordFields { get; set; } = true;
 }

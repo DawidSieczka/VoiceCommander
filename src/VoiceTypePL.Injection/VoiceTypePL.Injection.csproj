@@ -1,13 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\VoiceTypePL.Core\VoiceTypePL.Core.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- WPF włączone dla System.Windows.Clipboard (strategia schowka) i System.Windows.Automation
+         (wykrywanie pól hasła). SendInput/klik idą przez P/Invoke. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
 </Project>

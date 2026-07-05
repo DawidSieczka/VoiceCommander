@@ -4,6 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -21,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\VoiceTypePL.EditEngine\VoiceTypePL.EditEngine.csproj" />
+    <ProjectReference Include="..\..\src\VoiceTypePL.App\VoiceTypePL.App.csproj" />
   </ItemGroup>
 
 </Project>
