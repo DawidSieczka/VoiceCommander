@@ -1,0 +1,15 @@
+## .NET
+bin/
+obj/
+*.user
+
+## Rider / VS
+.vs/
+.idea/
+*.suo
+
+## Models (downloaded at first run, not versioned)
+**/models/
+
+## Claude Code — lokalne ustawienia/uprawnienia (per-maszyna)
+.claude/settings.local.json

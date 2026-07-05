@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\VoiceTypePL.Core\VoiceTypePL.Core.csproj" />
+    <ProjectReference Include="..\VoiceTypePL.Audio\VoiceTypePL.Audio.csproj" />
+    <ProjectReference Include="..\VoiceTypePL.Vad\VoiceTypePL.Vad.csproj" />
+    <ProjectReference Include="..\VoiceTypePL.Stt\VoiceTypePL.Stt.csproj" />
+    <ProjectReference Include="..\VoiceTypePL.Injection\VoiceTypePL.Injection.csproj" />
+    <ProjectReference Include="..\VoiceTypePL.EditEngine\VoiceTypePL.EditEngine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

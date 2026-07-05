@@ -1,0 +1,9 @@
+<Application x:Class="VoiceTypePL.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:VoiceTypePL.App"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- Brak StartupUri: aplikacja startuje wyłącznie do zasobnika, bez widocznego okna (§1.1).
+         ShutdownMode=OnExplicitShutdown — proces żyje mimo braku okien; zamknięcie tylko z menu tray. -->
+    <Application.Resources />
+</Application>
