@@ -10,6 +10,7 @@ public sealed class OverlayViewModel : INotifyPropertyChanged
 {
     private string _text = string.Empty;
     private int _pendingCount;
+    private string _oldText = string.Empty;
 
     /// <summary>Tekst bieżącego zdania (dwukierunkowo z edytowalnym polem w dymku).</summary>
     public string Text
@@ -17,6 +18,25 @@ public sealed class OverlayViewModel : INotifyPropertyChanged
         get => _text;
         set => Set(ref _text, value);
     }
+
+    /// <summary>
+    /// Podgląd „stare → nowe" w trybie edycji (§5.6): tekst, który zostanie podmieniony. Pusty = tryb
+    /// zwykłego dyktowania (podgląd ukryty).
+    /// </summary>
+    public string OldText
+    {
+        get => _oldText;
+        set
+        {
+            if (Set(ref _oldText, value))
+            {
+                Raise(nameof(HasOldText));
+            }
+        }
+    }
+
+    /// <summary>Czy pokazać podgląd podmienianego tekstu (sterowanie widocznością sekcji „stare").</summary>
+    public bool HasOldText => !string.IsNullOrEmpty(_oldText);
 
     /// <summary>Liczba zdań czekających w kolejce za bieżącym.</summary>
     public int PendingCount

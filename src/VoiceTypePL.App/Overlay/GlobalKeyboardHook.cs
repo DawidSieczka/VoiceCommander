@@ -35,6 +35,20 @@ internal sealed class GlobalKeyboardHook : IDisposable
             NativeMethods.WH_KEYBOARD_LL, _proc, NativeMethods.GetModuleHandle(null), 0);
     }
 
+    /// <summary>
+    /// Zdejmuje hook z systemu. Wołane przy chowaniu dymka — zainstalowany WH_KEYBOARD_LL dodaje
+    /// (minimalne) opóźnienie każdemu naciśnięciu klawisza w całym systemie, więc trzymamy go tylko
+    /// wtedy, gdy dymek jest widoczny i Enter/Esc mają być łapane.
+    /// </summary>
+    public void Uninstall()
+    {
+        if (_hook != IntPtr.Zero)
+        {
+            NativeMethods.UnhookWindowsHookEx(_hook);
+            _hook = IntPtr.Zero;
+        }
+    }
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && IsEnabled)
@@ -58,12 +72,5 @@ internal sealed class GlobalKeyboardHook : IDisposable
         return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
-    public void Dispose()
-    {
-        if (_hook != IntPtr.Zero)
-        {
-            NativeMethods.UnhookWindowsHookEx(_hook);
-            _hook = IntPtr.Zero;
-        }
-    }
+    public void Dispose() => Uninstall();
 }

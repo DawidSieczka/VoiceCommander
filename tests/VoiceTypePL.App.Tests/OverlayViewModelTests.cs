@@ -48,4 +48,33 @@ public sealed class OverlayViewModelTests
         Assert.Equal(nameof(OverlayViewModel.Text), changed);
         Assert.Equal("nowy tekst", vm.Text);
     }
+
+    [Fact]
+    public void OldText_Empty_HidesPreview()
+    {
+        var vm = new OverlayViewModel();
+        Assert.False(vm.HasOldText);
+    }
+
+    [Fact]
+    public void OldText_Set_ShowsPreview_AndRaisesDependent()
+    {
+        var vm = new OverlayViewModel();
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.OldText = "stare zdanie.";
+
+        Assert.True(vm.HasOldText);
+        Assert.Contains(nameof(OverlayViewModel.OldText), raised);
+        Assert.Contains(nameof(OverlayViewModel.HasOldText), raised);
+    }
+
+    [Fact]
+    public void OldText_Cleared_HidesPreviewAgain()
+    {
+        var vm = new OverlayViewModel { OldText = "stare" };
+        vm.OldText = string.Empty;
+        Assert.False(vm.HasOldText);
+    }
 }

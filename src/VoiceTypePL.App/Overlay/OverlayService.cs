@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
+using VoiceTypePL.Core.Configuration;
 using VoiceTypePL.Core.History;
 using VoiceTypePL.Core.Injection;
 using VoiceTypePL.Core.Speech;
@@ -8,22 +9,33 @@ using VoiceTypePL.Core.Speech;
 namespace VoiceTypePL.App.Overlay;
 
 /// <summary>
-/// Spina dymek z resztą aplikacji (§5.4): subskrybuje transkrypcje, kolejkuje je (jedno pokazane,
-/// reszta czeka), pokazuje okno przy kursorze bez kradzieży fokusa, obsługuje globalny Enter/Esc oraz
-/// auto-ukrywanie. Zatwierdzenie zdania zgłasza przez <see cref="SentenceConfirmed"/> — właściwe
-/// „wpisanie" tekstu podłączy Etap 4 (wstrzykiwanie). Cała praca z UI odbywa się na wątku Dispatchera.
+/// Spina transkrypcję z wpisywaniem tekstu. Dwa tryby (ustawienie <c>DictationMode</c>, czytane na żywo):
+/// <list type="bullet">
+/// <item><b>Direct</b> (domyślny) — zdanie jest wpisywane od razu w okno z fokusem, bez dymka; dymek
+/// pojawia się wyłącznie w trybie edycji (Ctrl+Alt+E), gdzie nowa wersja czeka na Enter/Esc.</item>
+/// <item><b>Confirm</b> — klasyczny przepływ §5.4: każde zdanie czeka w dymku (kolejka, Enter/Esc,
+/// auto-ukrywanie).</item>
+/// </list>
+/// Globalny hook Enter/Esc jest instalowany tylko na czas widoczności dymka (WH_KEYBOARD_LL opóźnia
+/// każde naciśnięcie klawisza w systemie). Wstrzykiwania są serializowane — dwa zdania nie walczą
+/// o schowek. Cała praca z UI odbywa się na wątku Dispatchera.
 /// </summary>
 public sealed class OverlayService : IDisposable
 {
     private readonly ITranscriber _transcriber;
     private readonly ITextInjector _injector;
     private readonly SentenceRegistry _registry;
+    private readonly ISettingsService _settings;
     private readonly OverlayOptions _options;
     private readonly ILogger<OverlayService> _logger;
 
     private readonly OverlayViewModel _viewModel = new();
     private readonly OverlaySentenceQueue _queue = new();
     private readonly GlobalKeyboardHook _hook = new();
+
+    // Serializacja wstrzyknięć: InjectAsync zawiera opóźnienia (klik, przywrócenie schowka), więc dwa
+    // równoległe wywołania na Dispatcherze mogłyby się przeplatać i pomieszać zawartość schowka.
+    private readonly SemaphoreSlim _injectGate = new(1, 1);
 
     private Dispatcher? _dispatcher;
     private OverlayWindow? _window;
@@ -33,27 +45,51 @@ public sealed class OverlayService : IDisposable
         ITranscriber transcriber,
         ITextInjector injector,
         SentenceRegistry registry,
+        ISettingsService settings,
         OverlayOptions options,
         ILogger<OverlayService> logger)
     {
         _transcriber = transcriber;
         _injector = injector;
         _registry = registry;
+        _settings = settings;
         _options = options;
         _logger = logger;
     }
 
-    /// <summary>Zgłaszane po zatwierdzeniu zdania (i wpisaniu go).</summary>
+    /// <summary>Zgłaszane po zatwierdzeniu zdania z dymka (i wpisaniu go) — dla trybu edycji.</summary>
     public event EventHandler<string>? SentenceConfirmed;
 
-    /// <summary>Zgłaszane, gdy zdanie zniknęło bez wpisania (odrzucone/auto-ukryte) — dla trybu edycji.</summary>
+    /// <summary>Zgłaszane, gdy zdanie zniknęło z dymka bez wpisania (odrzucone/auto-ukryte) — dla trybu edycji.</summary>
     public event EventHandler? SentenceDismissed;
 
     /// <summary>
-    /// Tryb edycji (§5.6): gdy true, zatwierdzenie nadpisuje zaznaczone zdanie (bez dopinania spacji).
-    /// Ustawiany przez EditModeService po zaznaczeniu zdania do podmiany.
+    /// Tryb edycji (§5.6): gdy true, transkrypcje idą do dymka (nawet w trybie Direct), a zatwierdzenie
+    /// nadpisuje zaznaczone zdanie (bez dopinania spacji). Ustawiany przez EditModeService.
     /// </summary>
     public bool ReplaceMode { get; set; }
+
+    /// <summary>Czy dyktowanie działa w trybie bezpośrednim (bez dymka). Czytane z ustawień na żywo.</summary>
+    private bool IsDirectMode =>
+        !string.Equals(_settings.Current.DictationMode, "Confirm", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Ustawia (lub czyści — <c>null</c>) podgląd „stare → nowe" w dymku (§5.6). Woła EditModeService po
+    /// zaznaczeniu zdania do podmiany. Bezpieczne z dowolnego wątku — przełącza na Dispatcher.
+    /// </summary>
+    public void SetEditPreview(string? oldText)
+    {
+        void Apply() => _viewModel.OldText = oldText ?? string.Empty;
+
+        if (_dispatcher is null || _dispatcher.CheckAccess())
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcher.BeginInvoke(Apply);
+        }
+    }
 
     /// <summary>Tworzy okno i hooki. Musi być wołane z wątku UI (jak inicjalizacja zasobnika).</summary>
     public void Initialize()
@@ -67,16 +103,11 @@ public sealed class OverlayService : IDisposable
 
         _hook.EnterPressed += () => _window?.Confirm();
         _hook.EscapePressed += () => _window?.Reject();
-        _hook.Install();
-
-        if (_options.AutoHideSeconds > 0)
-        {
-            _autoHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_options.AutoHideSeconds) };
-            _autoHideTimer.Tick += OnAutoHideTick;
-        }
 
         _transcriber.SentenceTranscribed += OnSentenceTranscribed;
-        _logger.LogInformation("OverlayService gotowy (auto-ukrywanie: {AutoHide}).",
+        _logger.LogInformation(
+            "OverlayService gotowy (tryb: {Mode}, auto-ukrywanie: {AutoHide}).",
+            IsDirectMode ? "Direct" : "Confirm",
             _options.AutoHideSeconds > 0 ? $"{_options.AutoHideSeconds:F0}s" : "wyłączone");
     }
 
@@ -85,6 +116,12 @@ public sealed class OverlayService : IDisposable
         // Zdarzenie przychodzi z wątku transkrypcji — przełącz na UI.
         _dispatcher?.BeginInvoke(() =>
         {
+            if (IsDirectMode && !ReplaceMode)
+            {
+                _ = InjectDirectAsync(sentence.Text);
+                return;
+            }
+
             var becameCurrent = _queue.Enqueue(sentence);
             if (becameCurrent)
             {
@@ -98,6 +135,48 @@ public sealed class OverlayService : IDisposable
         });
     }
 
+    /// <summary>Tryb Direct: wpisz zdanie od razu w okno z fokusem — bez dymka i bez potwierdzania.</summary>
+    private async Task InjectDirectAsync(string text)
+    {
+        try
+        {
+            var result = await InjectSerializedAsync(text, appendSpace: null, clickToFocus: null);
+            if (result.Success)
+            {
+                _logger.LogInformation("Wpisano bezpośrednio: \"{Text}\".", text);
+            }
+            else
+            {
+                _logger.LogInformation("Nie wpisano ({Reason}): \"{Text}\".",
+                    result.SkippedReason ?? "niepowodzenie", text);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Błąd bezpośredniego wpisywania zdania.");
+        }
+    }
+
+    private async Task<InjectionResult> InjectSerializedAsync(string text, bool? appendSpace, bool? clickToFocus)
+    {
+        await _injectGate.WaitAsync();
+        try
+        {
+            var result = await _injector.InjectAsync(text, appendSpace, clickToFocus);
+            if (result.Success)
+            {
+                _registry.Record(new RegisteredSentence(
+                    text, DateTimeOffset.Now, result.WindowTitle, result.ProcessName, result.ProcessId, result.Strategy));
+            }
+
+            return result;
+        }
+        finally
+        {
+            _injectGate.Release();
+        }
+    }
+
     private void ShowCurrent()
     {
         var current = _queue.Current;
@@ -109,6 +188,7 @@ public sealed class OverlayService : IDisposable
         _viewModel.Text = current.Text;
         _viewModel.PendingCount = _queue.PendingCount;
         _window.ShowNoActivate();
+        _hook.Install();                 // hook tylko na czas widoczności dymka
         _hook.IsEnabled = true;
         RestartAutoHide();
 
@@ -126,14 +206,12 @@ public sealed class OverlayService : IDisposable
 
         try
         {
-            var result = await _injector.InjectAsync(
+            var result = await InjectSerializedAsync(
                 value,
                 appendSpace: ReplaceMode ? false : null,
                 clickToFocus: ReplaceMode ? false : null);
             if (result.Success)
             {
-                _registry.Record(new RegisteredSentence(
-                    value, DateTimeOffset.Now, result.WindowTitle, result.ProcessName, result.ProcessId, result.Strategy));
                 _logger.LogInformation("Zatwierdzono i wpisano: \"{Text}\".", value);
             }
             else
@@ -163,7 +241,7 @@ public sealed class OverlayService : IDisposable
 
     private void OnRerecordRequested(object? sender, EventArgs e)
     {
-        // Pełne ponowne dyktowanie „w miejscu" dopracujemy w Etapie 7; na razie zwolnij slot.
+        // Zwolnij bieżące zdanie — użytkownik dyktuje je od nowa (kolejna transkrypcja trafi w to samo miejsce).
         _logger.LogInformation("Nagraj ponownie — zwalniam bieżące zdanie.");
         SentenceDismissed?.Invoke(this, EventArgs.Empty);
         AdvanceOrHide();
@@ -192,19 +270,30 @@ public sealed class OverlayService : IDisposable
     private void Hide()
     {
         _hook.IsEnabled = false;
+        _hook.Uninstall();
         _autoHideTimer?.Stop();
         _viewModel.PendingCount = 0;
+        _viewModel.OldText = string.Empty;   // sprzątnij podgląd edycji, żeby nie wisiał przy dyktowaniu
         _window?.Hide();
     }
 
     private void RestartAutoHide()
     {
-        if (_autoHideTimer is null)
+        // Interwał czytany z opcji przy każdym pokazaniu — zmiana w ustawieniach działa bez restartu.
+        _autoHideTimer?.Stop();
+        var seconds = _options.AutoHideSeconds;
+        if (seconds <= 0)
         {
             return;
         }
 
-        _autoHideTimer.Stop();
+        if (_autoHideTimer is null)
+        {
+            _autoHideTimer = new DispatcherTimer();
+            _autoHideTimer.Tick += OnAutoHideTick;
+        }
+
+        _autoHideTimer.Interval = TimeSpan.FromSeconds(seconds);
         _autoHideTimer.Start();
     }
 
@@ -214,5 +303,6 @@ public sealed class OverlayService : IDisposable
         _autoHideTimer?.Stop();
         _hook.Dispose();
         _window?.Close();
+        _injectGate.Dispose();
     }
 }

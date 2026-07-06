@@ -28,6 +28,12 @@ public sealed class WhisperOptions
     public QuantizationType Quantization { get; set; } = QuantizationType.Q5_0;
 
     /// <summary>
+    /// Liczba wątków dekodowania (istotna na CPU). 0 = automatycznie: liczba rdzeni logicznych
+    /// ograniczona do 8 (powyżej zysk znika, a maszyna robi się nieresponsywna).
+    /// </summary>
+    public int Threads { get; set; }
+
+    /// <summary>
     /// Katalog na modele. <c>null</c> → <c>%LocalAppData%\VoiceTypePL\models</c> (§4).
     /// </summary>
     public string? ModelsDirectory { get; set; }

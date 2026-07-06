@@ -61,34 +61,56 @@ public sealed class WhisperTranscriber : ITranscriber
                 return;
             }
 
-            // Kolejność prób natywek: GPU (CUDA→Vulkan) przed CPU, chyba że wymuszono CPU.
-            RuntimeOptions.RuntimeLibraryOrder = _options.PreferGpu
+            // Model dobieramy do runtime'u, który REALNIE się załaduje: duży model GPU mielony na CPU
+            // potrafi być kilkukrotnie wolniejszy od modelu CPU — to główny zabójca responsywności.
+            // Pre-check bibliotek CUDA (sterownik + cuBLAS) pozwala od razu wybrać model CPU i nie
+            // pobierać ~1,5 GB modelu GPU na maszynie bez CUDA.
+            var tryGpu = _options.PreferGpu && IsCudaRuntimeAvailable();
+            RuntimeOptions.RuntimeLibraryOrder = tryGpu
                 ? new List<RuntimeLibrary> { RuntimeLibrary.Cuda, RuntimeLibrary.Cuda12, RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu }
                 : new List<RuntimeLibrary> { RuntimeLibrary.Cpu };
+            if (_options.PreferGpu && !tryGpu)
+            {
+                _logger?.LogInformation(
+                    "CUDA niedostępne (brak sterownika/cuBLAS) — od razu model CPU {Model}.", _options.CpuModel);
+            }
 
-            var modelType = _options.PreferGpu ? _options.GpuModel : _options.CpuModel;
+            var modelType = tryGpu ? _options.GpuModel : _options.CpuModel;
             var modelPath = await _modelProvider
                 .GetModelPathAsync(modelType, _options.Quantization, progress: null, cancellationToken)
                 .ConfigureAwait(false);
 
             _factory = WhisperFactory.FromPath(modelPath);
+
+            // Bezpiecznik: loader mimo pre-checku mógł zejść na CPU — wtedy przeładuj mniejszy model CPU.
+            if (tryGpu && RuntimeOptions.LoadedLibrary == RuntimeLibrary.Cpu && _options.GpuModel != _options.CpuModel)
+            {
+                _logger?.LogWarning(
+                    "Runtime GPU nie załadował się — przełączam z modelu {Gpu} na model CPU {Cpu}.",
+                    _options.GpuModel, _options.CpuModel);
+                _factory.Dispose();
+                modelType = _options.CpuModel;
+                modelPath = await _modelProvider
+                    .GetModelPathAsync(modelType, _options.Quantization, progress: null, cancellationToken)
+                    .ConfigureAwait(false);
+                _factory = WhisperFactory.FromPath(modelPath);
+            }
+
+            var threads = _options.Threads > 0
+                ? _options.Threads
+                : Math.Clamp(Environment.ProcessorCount, 1, 8);
+
             _processor = _factory.CreateBuilder()
                 .WithLanguage(_options.Language)
                 .WithTemperature(_options.Temperature)
+                .WithThreads(threads)     // domyślne 4 wątki whisper.cpp nie wykorzystują mocniejszych CPU
                 .WithNoContext()          // każdy segment VAD niezależnie — bez przenoszenia kontekstu
                 .WithProbabilities()      // wypełnia Probability / NoSpeechProbability (filtr halucynacji)
                 .Build();
 
-            var loaded = RuntimeOptions.LoadedLibrary;
             _logger?.LogInformation(
-                "Whisper gotowy — model {Model} ({Quant}), runtime {Loaded}.",
-                modelType, _options.Quantization, loaded?.ToString() ?? "auto");
-            if (_options.PreferGpu && loaded == RuntimeLibrary.Cpu)
-            {
-                _logger?.LogWarning(
-                    "GPU niedostępne — model {Model} działa na CPU (wolno). Rozważ model {Cpu} dla CPU.",
-                    modelType, _options.CpuModel);
-            }
+                "Whisper gotowy — model {Model} ({Quant}), runtime {Loaded}, wątki: {Threads}.",
+                modelType, _options.Quantization, RuntimeOptions.LoadedLibrary?.ToString() ?? "auto", threads);
 
             _consumer = Task.Run(ConsumeAsync);
             _initialized = true;
@@ -97,6 +119,27 @@ public sealed class WhisperTranscriber : ITranscriber
         {
             _initLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Czy w systemie są biblioteki wymagane przez runtime CUDA Whispera: sterownik NVIDIA
+    /// (<c>nvcuda.dll</c>) i cuBLAS z CUDA Toolkit 11/12. Bez nich loader i tak spadnie na CPU,
+    /// a my niepotrzebnie pobralibyśmy duży model GPU.
+    /// </summary>
+    private static bool IsCudaRuntimeAvailable()
+    {
+        static bool CanLoad(string name)
+        {
+            if (!System.Runtime.InteropServices.NativeLibrary.TryLoad(name, out var handle))
+            {
+                return false;
+            }
+
+            System.Runtime.InteropServices.NativeLibrary.Free(handle);
+            return true;
+        }
+
+        return CanLoad("nvcuda.dll") && (CanLoad("cublas64_12.dll") || CanLoad("cublas64_11.dll"));
     }
 
     public void Enqueue(SpeechSegment segment)

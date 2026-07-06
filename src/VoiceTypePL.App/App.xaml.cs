@@ -8,6 +8,7 @@ using Serilog.Core;
 using Serilog.Events;
 using VoiceTypePL.App.Editing;
 using VoiceTypePL.App.Overlay;
+using VoiceTypePL.App.Settings;
 using VoiceTypePL.App.Tray;
 using VoiceTypePL.Audio;
 using VoiceTypePL.Core.Audio;
@@ -36,6 +37,7 @@ public partial class App : Application
     private TrayIconService? _tray;
     private OverlayService? _overlay;
     private EditModeService? _editMode;
+    private BlacklistPauseService? _blacklist;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -62,8 +64,12 @@ public partial class App : Application
         builder.Services.AddSingleton<AppState>();
         builder.Services.AddSingleton<TrayIconService>();
 
-        // Pipeline audio + VAD (Etap 1).
-        builder.Services.AddSingleton<VadOptions>();
+        // Pipeline audio + VAD (Etap 1; od Etapu 7 próg ciszy z konfiguracji, §5.2/§5.8).
+        builder.Services.AddSingleton(sp => new VadOptions
+        {
+            MinSilenceDuration = TimeSpan.FromMilliseconds(
+                Math.Clamp(sp.GetRequiredService<ISettingsService>().Current.VadMinSilenceMs, 200, 3000)),
+        });
         builder.Services.AddSingleton<IVadModel>(sp =>
             new SileroVadModel(sp.GetRequiredService<ILogger<SileroVadModel>>()));
         builder.Services.AddSingleton<VadSegmenter>();
@@ -87,6 +93,8 @@ public partial class App : Application
             new Win32TextInjector(
                 sp.GetRequiredService<InjectionOptions>(),
                 sp.GetRequiredService<ILogger<Win32TextInjector>>()));
+        builder.Services.AddSingleton<ISelectionController>(sp =>
+            new Win32SelectionController(sp.GetRequiredService<ILogger<Win32SelectionController>>()));
         builder.Services.AddSingleton<SentenceRegistry>();
 
         // Dymek potwierdzenia (Etap 3).
@@ -96,9 +104,19 @@ public partial class App : Application
         });
         builder.Services.AddSingleton<OverlayService>();
 
-        // Edycja zdania — UIA Poziom 1 (Etap 5).
+        // Etap 7 — „Szlif": okno ustawień, autostart, czarna lista (auto-pauza).
+        builder.Services.AddSingleton<AutostartManager>();
+        builder.Services.AddSingleton<SettingsWindowService>();
+        builder.Services.AddSingleton<BlacklistPauseService>();
+
+        // Edycja zdania — Poziom 1 (UIA, Etap 5) + Poziomy 2/3 i cache per aplikacja (Etap 6).
         builder.Services.AddSingleton(sp =>
             new UiaSentenceLocator(sp.GetRequiredService<ILogger<UiaSentenceLocator>>()));
+        builder.Services.AddSingleton(sp =>
+            new ClickSentenceSelector(
+                sp.GetRequiredService<ISelectionController>(),
+                sp.GetRequiredService<ILogger<ClickSentenceSelector>>()));
+        builder.Services.AddSingleton<EditLevelCache>();
         builder.Services.AddSingleton<EditModeService>();
 
         builder.Services.AddHostedService<AudioPipelineHostedService>();
@@ -135,6 +153,11 @@ public partial class App : Application
         // Tryb edycji: skrót Ctrl+Alt+E + okno podświetlenia (wątek UI).
         _editMode = _host.Services.GetRequiredService<EditModeService>();
         _editMode.Initialize();
+
+        // Czarna lista (auto-pauza) + synchronizacja wpisu autostartu z konfiguracją (Etap 7).
+        _blacklist = _host.Services.GetRequiredService<BlacklistPauseService>();
+        _blacklist.Initialize();
+        _host.Services.GetRequiredService<AutostartManager>().Apply(settings.Current.AutostartEnabled);
     }
 
     /// <summary>
@@ -173,6 +196,7 @@ public partial class App : Application
             GpuModel = ParseEnum(settings.WhisperGpuModel, GgmlType.LargeV3Turbo, logger),
             CpuModel = ParseEnum(settings.WhisperCpuModel, GgmlType.Medium, logger),
             Quantization = ParseEnum(settings.WhisperQuantization, QuantizationType.Q5_0, logger),
+            Threads = settings.WhisperThreads,
         };
         return options;
     }
@@ -209,6 +233,7 @@ public partial class App : Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        _blacklist?.Dispose();
         _editMode?.Dispose();
         _overlay?.Dispose();
         _tray?.Dispose();

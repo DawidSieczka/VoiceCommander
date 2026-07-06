@@ -17,11 +17,14 @@ public sealed class VadSegmenter : ISpeechSegmentSource
     private readonly ILogger<VadSegmenter>? _logger;
 
     private readonly int _windowSize;
-    private readonly int _prePadSamples;
-    private readonly int _postPadSamples;
-    private readonly int _minSilenceSamples;
-    private readonly int _minSpeechSamples;
-    private readonly int _maxSpeechSamples;
+
+    // Progi w próbkach liczone z opcji przy każdym użyciu (tania arytmetyka) — dzięki temu zmiana
+    // ustawień (np. suwak ciszy w oknie ustawień, Etap 7) działa na żywo, bez restartu pipeline'u.
+    private int PrePadSamples => AudioFormat.DurationToSamples(_options.SpeechPadding);
+    private int PostPadSamples => AudioFormat.DurationToSamples(_options.SpeechPadding);
+    private int MinSilenceSamples => AudioFormat.DurationToSamples(_options.MinSilenceDuration);
+    private int MinSpeechSamples => AudioFormat.DurationToSamples(_options.MinSpeechDuration);
+    private int MaxSpeechSamples => AudioFormat.DurationToSamples(_options.MaxSpeechDuration);
 
     // Akumulator do składania pełnych okien z dowolnych buforów wejściowych.
     private readonly float[] _window;
@@ -45,11 +48,6 @@ public sealed class VadSegmenter : ISpeechSegmentSource
 
         _windowSize = model.WindowSize;
         _window = new float[_windowSize];
-        _prePadSamples = AudioFormat.DurationToSamples(options.SpeechPadding);
-        _postPadSamples = AudioFormat.DurationToSamples(options.SpeechPadding);
-        _minSilenceSamples = AudioFormat.DurationToSamples(options.MinSilenceDuration);
-        _minSpeechSamples = AudioFormat.DurationToSamples(options.MinSpeechDuration);
-        _maxSpeechSamples = AudioFormat.DurationToSamples(options.MaxSpeechDuration);
     }
 
     public event EventHandler<SpeechSegment>? SpeechSegmentReady;
@@ -131,11 +129,11 @@ public sealed class VadSegmenter : ISpeechSegmentSource
                 }
             }
 
-            if (_trailingSilence >= _minSilenceSamples)
+            if (_trailingSilence >= MinSilenceSamples)
             {
                 FinalizeSegment(trimTrailingSilence: true);
             }
-            else if (_current.Count - _prePadInCurrent >= _maxSpeechSamples)
+            else if (_current.Count - _prePadInCurrent >= MaxSpeechSamples)
             {
                 _logger?.LogDebug("Segment osiągnął maksymalną długość — domykam na siłę.");
                 FinalizeSegment(trimTrailingSilence: false);
@@ -144,21 +142,21 @@ public sealed class VadSegmenter : ISpeechSegmentSource
 
         // Aktualizacja bufora pre-paddingu (okna do bieżącego włącznie, dla NASTĘPNEGO wyzwolenia).
         _preBuffer.AddRange(window);
-        if (_preBuffer.Count > _prePadSamples)
+        if (_preBuffer.Count > PrePadSamples)
         {
-            _preBuffer.RemoveRange(0, _preBuffer.Count - _prePadSamples);
+            _preBuffer.RemoveRange(0, _preBuffer.Count - PrePadSamples);
         }
     }
 
     private void FinalizeSegment(bool trimTrailingSilence)
     {
         var length = _current.Count;
-        if (trimTrailingSilence && _trailingSilence > _postPadSamples)
+        if (trimTrailingSilence && _trailingSilence > PostPadSamples)
         {
-            length -= _trailingSilence - _postPadSamples;   // zostaw tylko post-padding ciszy
+            length -= _trailingSilence - PostPadSamples;   // zostaw tylko post-padding ciszy
         }
 
-        if (_speechSamples >= _minSpeechSamples && length > 0)
+        if (_speechSamples >= MinSpeechSamples && length > 0)
         {
             var pcm = new float[length];
             _current.CopyTo(0, pcm, 0, length);

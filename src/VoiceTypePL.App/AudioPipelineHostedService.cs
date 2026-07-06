@@ -104,9 +104,11 @@ public sealed class AudioPipelineHostedService : IHostedService
 
     private void OnFrameReady(object? sender, AudioFrame frame)
     {
-        if (_state.IsPaused)
+        _state.SignalLevel = frame.Rms;              // wskaźnik poziomu w UI działa też podczas pauzy
+
+        if (_state.IsEffectivelyPaused)
         {
-            return;                                  // pauza: nie karmimy VAD
+            return;                                  // pauza (ręczna lub czarna lista): nie karmimy VAD
         }
 
         _segmenter.Push(frame);
@@ -167,6 +169,10 @@ public sealed class AudioPipelineHostedService : IHostedService
         }
 
         _logger.LogInformation("Transkrypcja zakończona — łącznie zdań: {Count}.", _sentenceCount);
+
+        // W trybie Direct ostatnie zdanie może być właśnie wpisywane (klik + Ctrl+V + przywrócenie
+        // schowka rozłożone na await'y na Dispatcherze) — daj mu chwilę przed zamknięciem aplikacji.
+        await Task.Delay(TimeSpan.FromSeconds(2));
 
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(
             () => System.Windows.Application.Current.Shutdown());

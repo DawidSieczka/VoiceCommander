@@ -4,13 +4,14 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using H.NotifyIcon;
 using Microsoft.Extensions.Logging;
+using VoiceTypePL.App.Settings;
 
 namespace VoiceTypePL.App.Tray;
 
 /// <summary>
-/// Zarządza ikoną zasobnika i jej menu kontekstowym.
-/// Etap 0 — szkielet menu: „Pauza" (przełącznik stanu w pamięci), „Ustawienia…" (wyłączone,
-/// okno powstanie w Etapie 7) oraz „Zamknij". Ikona i tooltip odzwierciedlają stan pauzy.
+/// Zarządza ikoną zasobnika i jej menu kontekstowym: „Pauza" (ręczna), „Ustawienia…" (okno z Etapu 7)
+/// oraz „Zamknij". Ikona i tooltip odzwierciedlają faktyczny stan nasłuchu — w tym auto-pauzę
+/// z czarnej listy (§5.8), której checkbox „Pauza" nie dotyczy.
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
@@ -18,15 +19,17 @@ public sealed class TrayIconService : IDisposable
     private static readonly Color PausedAccent = Color.FromRgb(0x9E, 0x9E, 0x9E); // szary — pauza
 
     private readonly AppState _state;
+    private readonly SettingsWindowService _settingsWindow;
     private readonly ILogger<TrayIconService> _logger;
     private readonly string _iconDirectory;
 
     private TaskbarIcon? _icon;
     private MenuItem? _pauseItem;
 
-    public TrayIconService(AppState state, ILogger<TrayIconService> logger)
+    public TrayIconService(AppState state, SettingsWindowService settingsWindow, ILogger<TrayIconService> logger)
     {
         _state = state;
+        _settingsWindow = settingsWindow;
         _logger = logger;
         _iconDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -44,8 +47,8 @@ public sealed class TrayIconService : IDisposable
         };
         _pauseItem.Click += OnPauseClicked;
 
-        // „Ustawienia" celowo wyłączone — pełne okno ustawień powstanie w Etapie 7.
-        var settingsItem = new MenuItem { Header = "Ustawienia…", IsEnabled = false };
+        var settingsItem = new MenuItem { Header = "Ustawienia…" };
+        settingsItem.Click += (_, _) => _settingsWindow.Show();
 
         var exitItem = new MenuItem { Header = "Zamknij" };
         exitItem.Click += OnExitClicked;
@@ -58,14 +61,14 @@ public sealed class TrayIconService : IDisposable
 
         _icon = new TaskbarIcon
         {
-            IconSource = IconFor(_state.IsPaused),
-            ToolTipText = TooltipFor(_state.IsPaused),
+            IconSource = IconFor(_state.IsEffectivelyPaused),
+            ToolTipText = TooltipFor(),
             ContextMenu = menu,
         };
         _icon.ForceCreate();
 
         _state.PausedChanged += OnPausedChanged;
-        ApplyPausedVisuals(_state.IsPaused);
+        ApplyPausedVisuals();
 
         _logger.LogInformation("Ikona zasobnika zainicjalizowana");
     }
@@ -76,19 +79,23 @@ public sealed class TrayIconService : IDisposable
         _state.IsPaused = _pauseItem!.IsChecked;
     }
 
-    private void OnPausedChanged(object? sender, bool paused) => ApplyPausedVisuals(paused);
+    private void OnPausedChanged(object? sender, bool paused)
+    {
+        // Zdarzenie może przyjść z timera czarnej listy — wizualizacja zawsze na wątku UI ikony.
+        Application.Current?.Dispatcher.BeginInvoke(ApplyPausedVisuals);
+    }
 
-    private void ApplyPausedVisuals(bool paused)
+    private void ApplyPausedVisuals()
     {
         if (_icon is null)
         {
             return;
         }
 
-        _pauseItem!.IsChecked = paused;
-        _icon.IconSource = IconFor(paused);
-        _icon.ToolTipText = TooltipFor(paused);
-        _logger.LogInformation("Stan pauzy: {Paused}", paused);
+        _pauseItem!.IsChecked = _state.IsPaused;      // checkbox = tylko pauza ręczna
+        _icon.IconSource = IconFor(_state.IsEffectivelyPaused);
+        _icon.ToolTipText = TooltipFor();
+        _logger.LogInformation("Stan nasłuchu: {Tooltip}", _icon.ToolTipText);
     }
 
     private ImageSource IconFor(bool paused)
@@ -104,8 +111,12 @@ public sealed class TrayIconService : IDisposable
         Application.Current.Shutdown();
     }
 
-    private static string TooltipFor(bool paused)
-        => paused ? "VoiceType PL — pauza" : "VoiceType PL — nasłuch";
+    private string TooltipFor() => _state switch
+    {
+        { IsPaused: true } => "VoiceType PL — pauza",
+        { IsAutoPaused: true } => "VoiceType PL — pauza (czarna lista)",
+        _ => "VoiceType PL — nasłuch",
+    };
 
     public void Dispose()
     {

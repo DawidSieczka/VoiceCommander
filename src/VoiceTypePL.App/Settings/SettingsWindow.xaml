@@ -1,0 +1,102 @@
+<Window x:Class="VoiceTypePL.App.Settings.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VoiceType PL — Ustawienia"
+        Width="480"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="16">
+
+        <GroupBox Header="Dyktowanie" Padding="8" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="Tryb wpisywania:" Margin="0,0,0,4"/>
+                <ComboBox x:Name="DictationModeCombo">
+                    <ComboBoxItem Content="Bezpośredni — pisz od razu w oknie z fokusem (dymek tylko do edycji)" Tag="Direct"/>
+                    <ComboBoxItem Content="Z potwierdzeniem — każde zdanie czeka w dymku na Enter/Esc" Tag="Confirm"/>
+                </ComboBox>
+                <DockPanel Margin="0,10,0,0">
+                    <TextBlock DockPanel.Dock="Left" Text="Cisza kończąca zdanie:"/>
+                    <TextBlock DockPanel.Dock="Right" x:Name="SilenceValueLabel" Text="500 ms" FontWeight="SemiBold"/>
+                    <Border/>
+                </DockPanel>
+                <Slider x:Name="SilenceSlider" Minimum="400" Maximum="1200" TickFrequency="50"
+                        IsSnapToTickEnabled="True" ValueChanged="OnSilenceSliderChanged"/>
+                <TextBlock Text="Krótsza cisza = szybsze pisanie, ale ryzyko cięcia zdań przy pauzach w mówieniu."
+                           FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Rozpoznawanie mowy (Whisper)" Padding="8" Margin="0,0,0,10">
+            <StackPanel>
+                <CheckBox x:Name="PreferGpuCheck" Content="Preferuj GPU (CUDA), gdy dostępne"/>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Model (GPU):" VerticalAlignment="Center" Margin="0,0,8,4"/>
+                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="GpuModelCombo" Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Model (CPU):" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CpuModelCombo"/>
+                </Grid>
+                <TextBlock Text="Zmiana modelu lub GPU zadziała po ponownym uruchomieniu aplikacji."
+                           FontSize="11" Foreground="Gray" Margin="0,6,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Wstrzykiwanie tekstu" Padding="8" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="Strategia:" Margin="0,0,0,4"/>
+                <ComboBox x:Name="StrategyCombo">
+                    <ComboBoxItem Content="Schowek (Ctrl+V) — szybka, domyślna" Tag="Clipboard"/>
+                    <ComboBoxItem Content="Unicode SendInput — wolniejsza, gdy aplikacja blokuje wklejanie" Tag="UnicodeSendInput"/>
+                </ComboBox>
+                <CheckBox x:Name="AppendSpaceCheck" Content="Dopisuj spację po każdym zdaniu" Margin="0,8,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Dymek" Padding="8" Margin="0,0,0,10">
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="Auto-ukrycie po bezczynności:"/>
+                    <TextBlock DockPanel.Dock="Right" x:Name="AutoHideValueLabel" Text="12 s" FontWeight="SemiBold"/>
+                    <Border/>
+                </DockPanel>
+                <Slider x:Name="AutoHideSlider" Minimum="0" Maximum="30" TickFrequency="1"
+                        IsSnapToTickEnabled="True" ValueChanged="OnAutoHideSliderChanged"/>
+                <TextBlock Text="0 = dymek nie znika sam (dotyczy trybu z potwierdzeniem i trybu edycji)."
+                           FontSize="11" Foreground="Gray"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="System" Padding="8" Margin="0,0,0,10">
+            <StackPanel>
+                <CheckBox x:Name="AutostartCheck" Content="Uruchamiaj przy logowaniu do Windows"/>
+                <TextBlock Text="Czarna lista (auto-pauza) — nazwy procesów po przecinku:" Margin="0,8,0,4"/>
+                <TextBox x:Name="BlacklistBox" AcceptsReturn="False"/>
+                <TextBlock Text="Np.: witcher3, cs2 — gdy taka aplikacja jest na wierzchu, nasłuch pauzuje."
+                           FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Mikrofon" Padding="8" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Poziom sygnału:" Margin="0,0,0,4"/>
+                <ProgressBar x:Name="SignalLevelBar" Height="14" Minimum="0" Maximum="1"/>
+                <TextBlock Text="Aplikacja używa domyślnego mikrofonu Windows i sama reaguje na jego zmianę."
+                           FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+            </StackPanel>
+        </GroupBox>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SaveButton" Content="Zapisz" Width="90" Margin="0,0,8,0" IsDefault="True" Click="OnSaveClicked"/>
+            <Button x:Name="CancelButton" Content="Anuluj" Width="90" IsCancel="True" Click="OnCancelClicked"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

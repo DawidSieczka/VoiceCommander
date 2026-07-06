@@ -42,16 +42,19 @@ public sealed class Win32TextInjector : ITextInjector
             cursor = default;
         }
 
-        if (_options.SkipPasswordFields && IsPasswordAt(cursor))
+        // Cel sprawdzamy tam, gdzie tekst faktycznie trafi: przy kliku — element pod myszą,
+        // bez kliku — element z fokusem (odczyt fokusa UIA jest też szybszy niż hit-test).
+        var effectiveClickToFocus = clickToFocus ?? _options.ClickToFocus;
+        if (_options.SkipPasswordFields && IsPasswordTarget(cursor, useCursorPosition: effectiveClickToFocus))
         {
-            _logger?.LogInformation("Pominięto wstrzyknięcie — kursor nad polem hasła.");
+            _logger?.LogInformation("Pominięto wstrzyknięcie — cel to pole hasła.");
             return InjectionResult.Skipped("pole hasła", _options.Strategy);
         }
 
         // Klik ustawia fokus/karetkę tylko gdy nie ma już aktywnej karetki (§5.5 krok 2). W trybie
         // edycji klik jest wyłączony (clickToFocus=false) — inaczej zwinąłby zaznaczenie do nadpisania
         // i wstawił tekst w pozycji myszy zamiast podmienić zdanie.
-        if ((clickToFocus ?? _options.ClickToFocus) && !HasActiveCaret())
+        if (effectiveClickToFocus && !HasActiveCaret())
         {
             ClickAtCursor();
             await Task.Delay(40, cancellationToken).ConfigureAwait(true);   // pozwól fokusowi się ustabilizować
@@ -194,16 +197,18 @@ public sealed class Win32TextInjector : ITextInjector
         return GetGUIThreadInfo(0, ref info) && info.hwndCaret != IntPtr.Zero;
     }
 
-    private bool IsPasswordAt(POINT point)
+    private bool IsPasswordTarget(POINT point, bool useCursorPosition)
     {
         try
         {
-            var element = AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y));
+            var element = useCursorPosition
+                ? AutomationElement.FromPoint(new System.Windows.Point(point.X, point.Y))
+                : AutomationElement.FocusedElement;
             return element?.Current.IsPassword ?? false;
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "UIA IsPassword niedostępne dla punktu kursora — zakładam brak hasła.");
+            _logger?.LogDebug(ex, "UIA IsPassword niedostępne dla celu wstrzyknięcia — zakładam brak hasła.");
             return false;
         }
     }
@@ -233,53 +238,4 @@ public sealed class Win32TextInjector : ITextInjector
 
         return (buffer.ToString(), processName, (int)pid);
     }
-
-    private static INPUT KeyInput(ushort virtualKey, bool keyUp) => new()
-    {
-        type = INPUT_KEYBOARD,
-        U = new InputUnion
-        {
-            ki = new KEYBDINPUT
-            {
-                wVk = virtualKey,
-                wScan = 0,
-                dwFlags = keyUp ? KEYEVENTF_KEYUP : 0,
-                time = 0,
-                dwExtraInfo = 0,
-            },
-        },
-    };
-
-    private static INPUT UnicodeInput(ushort codeUnit, bool keyUp) => new()
-    {
-        type = INPUT_KEYBOARD,
-        U = new InputUnion
-        {
-            ki = new KEYBDINPUT
-            {
-                wVk = 0,
-                wScan = codeUnit,
-                dwFlags = KEYEVENTF_UNICODE | (keyUp ? KEYEVENTF_KEYUP : 0),
-                time = 0,
-                dwExtraInfo = 0,
-            },
-        },
-    };
-
-    private static INPUT MouseInput(uint flags) => new()
-    {
-        type = INPUT_MOUSE,
-        U = new InputUnion
-        {
-            mi = new MOUSEINPUT
-            {
-                dx = 0,
-                dy = 0,
-                mouseData = 0,
-                dwFlags = flags,
-                time = 0,
-                dwExtraInfo = 0,
-            },
-        },
-    };
 }
